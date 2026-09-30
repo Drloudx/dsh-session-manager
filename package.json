@@ -1,7 +1,7 @@
 {
   "name": "@dsh-external/session-console",
-  "version": "0.2.0",
-  "description": "会话管理：按工作区列出会话（标题/活动时间/轮次/日志大小）、清理空会话、删除会话（host 工具 + webServer API + UI 面板）",
+  "version": "0.2.1",
+  "description": "DSH 会话管理插件：按工作区列出会话（标题/活动时间/轮次/日志大小）、清理空会话、批量删除、归档（侧边栏全局面板 + host 工具 + webServer API）",
   "private": true,
   "type": "module",
   "main": "./lib/index.js",
@@ -18,9 +18,31 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "lib"
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "deepseek-harness",
+    "cordis",
+    "session",
+    "session-manager",
+    "ui-panel"
   ],
   "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Drloudx/dsh-session-manager.git"
+  },
+  "homepage": "https://github.com/Drloudx/dsh-session-manager#readme",
+  "bugs": {
+    "url": "https://github.com/Drloudx/dsh-session-manager/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
