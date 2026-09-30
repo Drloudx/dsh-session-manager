@@ -78,6 +78,20 @@ visible = origin !== 'subagent' && !archived && (!blank || id === current)
 
 ## 构建
 
+## 安装
+
+仓库已包含构建好的 `lib/`，所以**不需要任何构建步骤**，clone 下来直接装即可。
+
+```powershell
+# 桌面端（Electron）：在桌面端的会话里让 DSH 自己装，它会用当前 profile（desktop）
+#   直接把本仓库目录的绝对路径给它即可；也可用 --profile web 装到网页端 profile
+dsh plugin --profile web add link:<本仓库绝对路径>
+```
+
+装完重启一次 Harness（或刷新页面），侧边栏「插件」下方会出现「会话管理」。
+
+## 开发
+
 `src/` 是唯一真源，`lib/` 全部由 tsc 产出（不再手工同步）。Host 使用 ESM；client 必须用 `tsconfig.client.json` 输出普通浏览器脚本，通过 `window.__ModuleLoader__.load` 注册。不要在 client 添加顶层 `import` / `export`，否则会让 Harness 合并加载的整包插件无法执行。
 
 ```bash
@@ -92,9 +106,15 @@ npm run smoke        # 无浏览器冒烟：用最小 React 运行时渲染 lib/
 构建会自动检查 client 能否作为普通脚本注册并重复加载，避免 Node 的 ESM 导入掩盖浏览器语法错误。
 有 Web 登录校验时，通过 `DSH_WEB_URL` 环境变量传入 Harness 启动时输出的完整登录链接，或设置 `DSH_WEB_COOKIE` 后运行 smoke；测试仅允许 GET，不会删除真实会话。
 
-面板使用原生模态弹窗，避免其他悬浮插件遮挡；支持 Escape 关闭、焦点限制/恢复、键盘折叠分组和窄屏布局。
+面板是**全局面板**（官方 `main` 槽），不是弹窗；切换靠侧边栏那一列，所以面板内没有关闭按钮。列表支持分组折叠、多选批量删除、搜索与工作区筛选、窄屏布局。
 刷新中会显示状态，重复请求会取消旧请求；删除与清理互斥，清理只提交预览后确认的 ID。清理范围为全部工作区，不受搜索与筛选影响。
 若 npm 因沙箱写不了默认缓存，加 `--cache ./.npm-cache`。
+
+### 改代码时容易踩的三个坑（都已在源码注释里标注）
+
+1. **图标名只有两个变体**：官方 primitives 只导出 `...Regular` / `...Medium`，**没有裸名**，`16` 也从来不是名字的一部分。写错会拿到 `undefined`，被当 React 组件渲染时整个槽位注册抛错、面板静默消失。
+2. **`SessionProjectionCache` 签名跨版本不同**：`0.1.5-rc.2` 是 `cachedSnapshot(meta, inheritedEventCount, keys)`，`0.2.0-rc.2` 是 `cachedSnapshot(meta, keys)`。传错第二个参数会抛 `SessionLogOffset must be a non-negative safe integer`，或者静默拿到空 values（标题全丢）。
+3. **`main` 面板根不要用 `position:absolute; inset:0`**：桌面端框架用 `padding-top` 给窗口控制区留位，`inset:0` 会锚到视口，面板会顶到标题栏上。
 
 注入 / 热重载（注入器环境内）：`dev_inject_plugin <本目录>`、`dev_reload_package session-console`。
 client 侧改动后浏览器需刷新一次页面才会用上新 bundle。
