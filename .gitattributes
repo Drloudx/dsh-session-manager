@@ -1,0 +1,11 @@
+# 仓库内统一 LF：避免 Windows 提交把 lib/*.js 变成 CRLF，
+# 让 clone 下来的产物字节与本地一致（客户端 bundle 会做 mtime/ctime/size 指纹）。
+* text=auto eol=lf
+
+# 二进制资源不要当成文本处理（将来若加图片/音效）
+*.png binary
+*.gif binary
+*.jpg binary
+*.ico binary
+*.wav binary
+*.mp3 binary

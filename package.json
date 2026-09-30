@@ -1,0 +1,52 @@
+{
+  "name": "@dsh-external/session-console",
+  "version": "0.2.0",
+  "description": "会话管理：按工作区列出会话（标题/活动时间/轮次/日志大小）、清理空会话、删除会话（host 工具 + webServer API + UI 面板）",
+  "private": true,
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "license": "BSD-3-Clause",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-llm": ">=0.0.1-rc <2",
+    "@deepseek-ai/dsh-tools": ">=0.0.1-rc <2",
+    "cordis": ">=4.0.0-rc <5",
+    "schemastery": "^3.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.5",
+    "typescript": "^5.9.2"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "node scripts/build.mjs --noEmit",
+    "smoke": "node scripts/smoke-client.mjs",
+    "test": "node scripts/check-client.mjs && node scripts/check-prune.mjs"
+  }
+}

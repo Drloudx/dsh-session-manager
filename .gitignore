@@ -1,0 +1,17 @@
+# 依赖
+node_modules/
+
+# 本地日志
+*.log
+
+# 临时产物
+*.tsbuildinfo
+*.tgz
+.npm-cache/
+
+# 本地一次性诊断脚本（不属于插件本体）
+build/
+
+# ⚠️ lib/ **不要**忽略：package.json 的 main / exports["./client"] 直接指向 lib/，
+# 它是"免构建安装"（dsh plugin add link:<本目录> 即可加载）所必需的产物。
+# 一旦忽略，clone 下来的人拿不到任何可用的插件代码。

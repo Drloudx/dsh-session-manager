@@ -1,0 +1,6 @@
+# dsh-session-manager bundle layer: mount the session-console plugin row
+# (host tools + webServer API + the client conversation.view panel).
+- insert:
+    - id: session-console
+      name: '@dsh-external/session-console'
+      config: {}
