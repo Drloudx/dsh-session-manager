@@ -10,8 +10,8 @@ DSH 会话管理 **hybrid 插件**（host 工具 + webServer API + 侧边栏「�
 | `dsh_session_archived` | 只列归档会话，并提示归档集里已无对应会话（目录已删）的残留 id |
 | `dsh_session_delete` | 删除会话：关闭空闲会话 → 等待写入结束 → 工作区账号摘除 → 删除会话目录与缓存。`confirm: true` 必填；当前和运行中的会话拒删；支持 `ids` 批量 |
 | `dsh_session_prune` | 清理「空会话」（创建后从未提问、非当前、非运行、非归档）。默认 dry-run，`confirm: true` 才真删 |
-| UI 面板 | 侧边栏上部「插件」下方新增一个全局面板图标（官方 `sidebar.panellist`）→ 中间列显示会话管理面板：工作区分组可折叠、搜索、工作区筛选、可见性开关、单行删除、一键清理空会话 |
-| webServer API | `GET /dsh-session-manager/api/sessions?current=<id>`、`POST …/delete`、`POST …/prune`、`POST …/archive`、`POST …/prune-subagents` |
+| UI 面板 | 侧边栏上部「插件」下方新增一个全局面板图标（官方 `sidebar.panellist`）→ 中间列显示会话管理面板：工作区分组可折叠、搜索、工作区筛选、可见性开关、多选批量删除（含**全选归档 / 全选非归档 / 全选子代理**）、单行删除与归档、未分组会话**一键归入工作区**、一键清理空会话 |
+| webServer API | `GET /dsh-session-manager/api/sessions?current=<id>`、`POST …/delete`、`POST …/prune`、`POST …/archive`、`POST …/attach`、`POST …/repair-archives`、`POST …/prune-subagents` |
 
 ### 为什么是「全局面板」而不是「左下角弹窗」
 
@@ -25,13 +25,79 @@ DSH 会话管理 **hybrid 插件**（host 工具 + webServer API + 侧边栏「�
 
 > 踩过的坑：`main` 面板根**不要**用 `position:absolute; inset:0`。桌面端（`[data-windows-titlebar]`）的应用框架用 `padding-top:var(--dsh-windows-titlebar-height)` 给窗口控制区留位，那是框架的 padding；一旦 `centerCol` 不是定位祖先，`inset:0` 会锚到视口/框架，面板就会顶到标题栏上、把窗口按钮盖住。用正常文档流 + `height:100%`。
 
-面板顶部点击「多选」后可勾选会话、全选当前筛选结果，再点击「删除所选」。切换筛选会清空选择；当前和运行中的会话不能勾选删除。每行右侧「⋯」弹出原生 Popover 悬浮菜单，不改变行高、不受列表滚动裁切，底部空间不足时向上展开。归档调用 Harness 官方工作区接口，当前但未运行的会话也可归档，可通过「显示归档」查看。
+面板顶部点击「多选」后可勾选会话、全选当前筛选结果，或用收窄的**全选归档 / 全选归档子代理 / 全选非归档子代理 / 全选子代理**按作用域圈选，再点击「删除所选」。这些快速全选只**追加**未选中的行、不覆盖已有选择，并且跳过当前会话 / 运行中 / 幽灵归档 / 只读条目；删除前仍会逐条列出确认。切换筛选会清空选择；当前和运行中的会话不能勾选删除。每行右侧「⋯」弹出原生 Popover 悬浮菜单，不改变行高、不受列表滚动裁切，底部空间不足时向上展开。归档调用 Harness 官方工作区接口，当前但未运行的会话也可归档，可通过「显示归档」查看。
+
+> **全选按钮的两个设计约束**（都是踩坑后定下来的）：
+>
+> 1. **归档与子代理是两个独立维度，交集必须单独给按钮**。「全选归档 + 全选子代理」点两次得到的是**并集**，而"所有归档子代理"要的是**交集**——所以拆成 `全选归档`（归档 ∩ 全部）/ `全选归档子代理`（归档 ∩ 子代理）/ `全选非归档子代理`（非归档 ∩ 子代理）/ `全选子代理`（并集）。
+> 2. **计数与作用域都豁免该维度自己的显示开关**。原实现把作用域绑在 `filtered`（已被开关裁过一遍）上，于是出现两个错乱：归档 10 条恰好全是子代理、而「显示子代理」默认关，`全选归档` 恒为 `0` 且置灰——看起来像"显示归档坏了"；同时 `全选非归档` 反把这 10 条归档吞了进去。现在按钮数字只反映"实际会选中多少条"，与开关无关；点下去会**自动打开**被藏住的开关，并在列表上方给出「另有 N 条归档会话不在当前列表里」的提示，避免"选中了却看不见"。
+
+「显示只读（新版日志）」单独一个开关（不混进「显示归档」）：只读条目是「当前 DSH 读不出来」，与用户主动归档是两回事，混在一起会让人误判归档数量。归档集里已无对应目录的 id 会显示成「（无对应会话）+ 幽灵归档」行，不可选中，并给出统计说明。
 
 「清理非活跃子代理」先预览所有工作区中非运行、非当前、非归档的子代理，确认后只提交预览的 ID；执行时重新检查状态，保留主会话。`POST …/prune-subagents` 省略 `confirm` 仅预览。
 
+## ⚠️ 「有的归档我看不见」的两个真实原因（已修）
+
+这是 2026-10 排查出来的现象：面板统计写着「归档 10 条」，列表里却对不上；部分会话在侧边栏和面板里**整体消失**。两个原因互不相干，必须分别处理：
+
+### 原因 1：会话日志的格式版本比当前 DSH 新 → 官方列举整条跳过
+
+会话日志是**带格式版本**的：`sessions/<projectKey(cwd)>/<encodeSegment(id)>/session.v<N>.jsonl.zstd`。
+
+- `dsh-session` 的 `SESSION_FORMAT_VERSION`：**0.1.5-rc.2 = 3**、**0.2.0-rc.2 = 4**。
+- `sessionPersistence.listArtifacts()` 只接受 ≤ 自己版本的 generation；版本更高的文件在
+  `readGenerationHeader()` 里被判为 "future format"，返回 `undefined`，然后**整条会话被跳过**。
+- 更坑的是 `resolveGenerationInDirectory()` 只取版本号**最大**的那个文件：一个目录里即使
+  并排放着可读的 v3 和更高的 v4，也会因为选中 v4 而让整条会话从语料里消失（旁边的 v3 也不看）。
+
+实测：磁盘 38 个会话目录，网页端 0.1.5-rc.2（v3）只能列出 22 个，另外 **16 个全是桌面端
+0.2.0-rc.2 写出的 v4**。
+
+**处理**：
+
+1. **首选**：把两端升到同一版本（`npm i -g @deepseek-ai/dsh@0.2.0-rc.2`），升级后 16 条全部恢复正常读写。
+2. 插件内保留**磁盘兜底索引**：把官方读不到的会话按目录约定直接读回 header，作为**只读**条目显示在
+   它所属的工作区分组下（chip「只读」+ 说明「日志为 v4 格式，当前 DSH 只认到 v3」），并**拒绝删除/归档**
+   它们——当前进程连正文都解析不了，不该去动更高版本 DSH 的数据。面板顶部会给出这类条目的数量提示。
+
+### 原因 2：归档集里的「幽灵标记」
+
+`workspaceRegistry.archivedSessionIds` 是**只增不减**的：官方只有 `archiveSession()`、**没有 unarchive**。
+会话目录被删除后，这条 id 会永久留在归档集里——它不产生任何可见行，却让「归档 N」永远大于能看到的归档行。
+
+**处理**：
+
+- `POST /dsh-session-manager/api/repair-archives`：把「既不在语料、也不在磁盘」的 id 从归档集里摘掉，
+  通过 `registry.setState()` 同时写库并更新**内存**快照，因此不需要重启。
+- 面板打开时若检测到幽灵标记会自动调用一次（每次挂载最多一次），失败只影响修复、不影响列表。
+- 命令行等价物：`node scripts/clean-ghost-archives.mjs [--apply]`（先备份 `workspace.json`）。
+  ⚠️ **它必须在 dsh 停止时用**，否则运行中的进程会用内存里的旧集合把文件覆盖回去。
+
+### 原因 3（分组）：为什么分叉会跑到「未分组」
+
+工作区归属**只认 `Workspace.sessionIds`**，不是按路径推断的；而 `attachSession()` 还会**强制校验**
+会话 header 的 `cwd` 必须 realpath 等于工作区路径、且该目录真实存在：
+
+```
+不能把分叉硬塞进 WORD 工作区：
+  cannot attach session '…' to workspace 'E:\Desktop\WORD':
+  its cwd 'E:\Desktop\langyangyang\WORD' does not resolve, so it cannot be validated
+```
+
+也不能「把父会话 cwd 改成 E:\Desktop\WORD」——`assertStoredIdentity()` 校验
+「header 的 id+cwd 必须指向日志真实所在路径」，改了会话就打不开（要一致必须连目录一起搬）。
+
+**插件的处理**：
+
+- 次级分组兜底：没有工作区归属的行，再按 `cwd` 与工作区路径**等价匹配**归组（Windows 大小写不敏感），
+  这样「日志确实写在工作区目录里、只是没登记进 sessionIds」的会话不会砸进未分组。口径统一在 host 层，
+  面板统计与列表分组因此永远一致。
+- 行菜单给出「归入工作区「X」」按钮（仅在 `cwd` 恰好等于某工作区路径时可用）；对不上号的显示灰色
+  「无法归入：cwd 与工作区路径不一致」并带原因 tooltip，而不是点了没反应。
+
 ## 安全边界（写接口）
 
-`POST /archive`、`/delete`、`/prune`、`/prune-subagents` 是**破坏性写操作**，而 DSH 的 HTTP 端口对所有本机进程开放，因此这些路由带信任栅栏：
+`POST /archive`、`/delete`、`/prune`、`/prune-subagents`、`/attach`、`/repair-archives` 是**破坏性写操作**，而 DSH 的 HTTP 端口对所有本机进程开放，因此这些路由带信任栅栏：
 
 - 写操作的 **Host 必须是回环地址**（`127.0.0.1` / `localhost` / `[::1]`），否则 `403`
 - 带 `Sec-Fetch-Site: cross-site` 的一律拒绝（防恶意网页打本机接口）
@@ -61,8 +127,10 @@ ctx.sessions / ctx.agents         活状态 / 运行状态
   `coldSnapshot(meta, inheritedEventCount, events)`，旧的一参调用永远拿不到标题。
 - 裸读 `storages/workspace.json`：绕过官方可见性规则（空会话 / 归档 / 子代理），
   面板会多出侧边栏根本没有的行。
-- `sessions/<workspace>/<sessionId>/session.jsonl.zstd`：v3 会话日志名是
-  `session.v3.jsonl.zstd`，只认旧名会导致 size/mtime 全为空（行里没有时间、排序错乱）。
+- `sessions/<workspace>/<sessionId>/session.jsonl.zstd`：会话日志名带**格式版本**，
+  现在是 `session.v<N>.jsonl.zstd`（0.1.5-rc.2 → v3，0.2.0-rc.2 → v4），只认旧名会导致
+  size/mtime 全为空（行里没有时间、排序错乱）；反过来，**只信官方列举**又会让更高版本的
+  日志整条消失，见上面「有的归档我看不见」一节。
 
 可见性规则与官方侧边栏（`dsh-client-ui-workspace`）一致：
 
@@ -75,6 +143,42 @@ visible = origin !== 'subagent' && !archived && (!blank || id === current)
 - 插件通过可卸载的 `AgentRegistry.create/resume` 方法适配保留返回的 `AgentHandle`（保留调用者上下文和返回对象）。删除时等待 `dispose()` 完成关闭、持久化排空和注销，再删除磁盘数据，不使用强删绕过。
 - 运行中或当前会话仍拒删；归档的空闲会话同样可删除。早于适配安装且没有关闭句柄的会话会明确提示重启一次，不会强删日志。重启后正常打开的会话均可跟踪。
 - 归档标记残留不会产生可见行（目录删除后该 id 同时离开语料），仅在返回步骤里提示。
+
+## 升级网页端（与桌面端对齐）
+
+网页端和桌面端共用同一个 `~/.dsh`（`sessions/`、`storages/`），但**版本可以不同**，于是会出现
+"桌面端写得进去、网页端读不出来"的错位。2026-10 的处置：
+
+```powershell
+# 1) 备份当前全局安装（可回滚）
+Copy-Item "$env:APPDATA\npm\node_modules\@deepseek-ai\dsh" "$env:USERPROFILE\.dsh\dsh-backup-0.1.5-rc.2" -Recurse
+
+# 2) 升级（npm 默认缓存在沙箱外，用本仓库内的缓存避免 EPERM；
+#    路径换成你 clone 本仓库的位置，例如 E:\Desktop\html\.dsh-upgrade-preflight\npm-cache）
+$env:npm_config_cache = '<本仓库路径>\.dsh-upgrade-preflight\npm-cache'
+npm i -g '@deepseek-ai/dsh@0.2.0-rc.2'
+
+# 3) 重启 dsh web（旧进程仍在跑旧代码）
+#    本机没有 pwsh 7，用 Windows PowerShell + Bypass（默认执行策略禁止脚本）
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restart-web.ps1 -WhatIfOnly   # 先只检查环境
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restart-web.ps1               # 再真重启
+```
+
+`restart-web.ps1` 不硬编码用户名/盘符：自动从 `PATH` 找 node、从 `npm root -g` 找 dsh 入口，
+输出落到 `$DSH_HOME/logs/web-<端口>.out|err.log`；支持 `-Port` / `-Profile` / `-DshHome`。
+⚠️ 脚本存为**带 BOM 的 UTF-8**：Windows PowerShell 5.1 按 ANSI 读取无 BOM 的 .ps1，
+中文注释会被解成乱码并连带破坏词法分析（报 `Unexpected token`）。
+
+回滚：把备份目录拷回 `%APPDATA%\npm\node_modules\@deepseek-ai\dsh` 再重启。
+
+升级后核对：`GET /dsh-session-manager/api/sessions` 里 `stats.unreachable` 应为 `0`。
+
+只读诊断脚本：
+
+- `node scripts/audit-disk-vs-corpus.mjs` —— 逐个解出磁盘 header，与官方语料对照，列出
+  「磁盘有、语料没有」的会话及其日志版本（本次就是靠它定位到 v4 的）。
+- `node scripts/clean-ghost-archives.mjs [--apply]` —— 清幽灵归档标记（**须在 dsh 停止时用**；
+  运行中的进程会用内存里的旧集合把文件覆盖回去）。
 
 ## 构建
 
